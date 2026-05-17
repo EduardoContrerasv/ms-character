@@ -15,24 +15,20 @@ public class CharacterServiceImpl implements CharacterService {
 
     private final CharacterRepository repository;
 
-    private CharacterDto toDto(Characters characters) {
-        return new CharacterDto(
-                characters.getCharacterId(),
-                characters.getName(),
-                characters.getGender(),
-                characters.getRole(),
-                characters.getElement()
-        );
-    }
-
-    private Characters toEntity(CharacterDto dto) {
-        Characters character = new Characters();
-        character.setName(dto.getName());
-        character.setGender(dto.getGender());
-        character.setRole(dto.getRole());
-        character.setElement(dto.getElement());
-
-        return character;
+    private CharacterDto toDto(Characters character) {
+        CharacterDto dto = new CharacterDto();
+        dto.setId(character.getCharacterId());
+        dto.setUserId(character.getUserId());
+        dto.setName(character.getName());
+        dto.setGender(character.getGender());
+        dto.setCharacterClass(character.getCharacterClass());
+        dto.setLevel(character.getLevel());
+        dto.setExperience(character.getExperience());
+        dto.setHealth(character.getHealth());
+        dto.setAttack(character.getAttack());
+        dto.setDefense(character.getDefense());
+        dto.setStatus(character.getStatus());
+        return dto;
     }
 
     @Override
@@ -53,14 +49,50 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     @Override
+    public List<CharacterDto> findCharactersByUserId(long userId) {
+        return repository.findByUserId(userId).stream().map(this::toDto).toList();
+    }
+
+    @Override
     public CharacterDto createCharacter(CharacterDto dto) {
         if (dto.getName() == null || dto.getName().isBlank()) {
             throw new RuntimeException("Character name cannot be empty");
         }
-        if (repository.findByName(dto.getName()).isPresent()) {
+
+        if (!repository.findByName(dto.getName()).isEmpty()) {
             throw new RuntimeException("A character with the name '" + dto.getName() + "' already exists");
         }
-        Characters savedCharacter = repository.save(this.toEntity(dto));
+
+        Characters character = new Characters();
+        character.setUserId(dto.getUserId());
+        character.setName(dto.getName());
+        character.setGender(dto.getGender());
+        character.setCharacterClass(dto.getCharacterClass());
+        character.setLevel(1);
+        character.setExperience(0);
+        character.setStatus("ACTIVE");
+
+        if (dto.getCharacterClass() != null) {
+            switch (dto.getCharacterClass()) {
+                case WARRIOR:
+                    character.setHealth(150); character.setAttack(20); character.setDefense(15);
+                    break;
+                case MAGE:
+                    character.setHealth(80); character.setAttack(30); character.setDefense(5);
+                    break;
+                case ARCHER:
+                    character.setHealth(100); character.setAttack(25); character.setDefense(10);
+                    break;
+                case ASSASSIN:
+                    character.setHealth(90); character.setAttack(35); character.setDefense(5);
+                    break;
+                case SUPPORT:
+                    character.setHealth(120); character.setAttack(10); character.setDefense(20);
+                    break;
+            }
+        }
+
+        Characters savedCharacter = repository.save(character);
         return this.toDto(savedCharacter);
     }
 
@@ -80,8 +112,6 @@ public class CharacterServiceImpl implements CharacterService {
 
         existingCharacter.setName(dto.getName());
         existingCharacter.setGender(dto.getGender());
-        existingCharacter.setRole(dto.getRole());
-        existingCharacter.setElement(dto.getElement());
 
         Characters updatedCharacter = repository.save(existingCharacter);
         return toDto(updatedCharacter);
