@@ -9,7 +9,7 @@ import java.util.Optional;
 
 public interface CharacterRepository extends JpaRepository<Characters, Long> {
 
-    Optional<Characters> findByName(String name);
+    List<Characters> findByName(String name);
 
-    Optional<Characters> findByUserId(Long userId);
+    List<Characters> findByUserId(Long userId);
 }

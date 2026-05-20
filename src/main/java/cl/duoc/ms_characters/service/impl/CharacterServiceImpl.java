@@ -1,5 +1,7 @@
 package cl.duoc.ms_characters.service.impl;
 
+import cl.duoc.ms_characters.client.UserFeignClient;
+import cl.duoc.ms_characters.dto.UserDto;
 import cl.duoc.ms_characters.model.Characters;
 import cl.duoc.ms_characters.dto.CharacterDto;
 import cl.duoc.ms_characters.service.CharacterService;
@@ -14,6 +16,7 @@ import java.util.List;
 public class CharacterServiceImpl implements CharacterService {
 
     private final CharacterRepository repository;
+    private final UserFeignClient userFeignClient;
 
     private CharacterDto toDto(Characters character) {
         CharacterDto dto = new CharacterDto();
@@ -55,12 +58,24 @@ public class CharacterServiceImpl implements CharacterService {
 
     @Override
     public CharacterDto createCharacter(CharacterDto dto) {
+
+        try {
+            UserDto user = userFeignClient.getUserById(dto.getUserId());
+
+            if (user == null || user.getId() == null) {
+                throw new RuntimeException("El usuario con la ID: " + dto.getUserId() + " no existe");
+            }
+        } catch (Exception e) {
+            System.err.println("Error de conexión con ms-user: " + e.getMessage());
+            throw new RuntimeException("No se pudo validar el usuario. Asegúrate de que el usuario existe");
+        }
+
         if (dto.getName() == null || dto.getName().isBlank()) {
-            throw new RuntimeException("Character name cannot be empty");
+            throw new RuntimeException("Debe ingresar un nombre");
         }
 
         if (!repository.findByName(dto.getName()).isEmpty()) {
-            throw new RuntimeException("A character with the name '" + dto.getName() + "' already exists");
+            throw new RuntimeException("Ya existe un personaje con el nombre: " + dto.getName());
         }
 
         Characters character = new Characters();
