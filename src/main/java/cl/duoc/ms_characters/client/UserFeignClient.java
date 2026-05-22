@@ -1,6 +1,6 @@
 package cl.duoc.ms_characters.client;
 
-import cl.duoc.ms_characters.dto.UserDto;
+import cl.duoc.ms_characters.dto.UserFeignDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -9,5 +9,5 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface UserFeignClient {
 
     @GetMapping("/api/v1/users/{id}")
-    UserDto getUserById(@PathVariable("id") Long id);
+    UserFeignDto getUserById(@PathVariable("id") Long id);
 }
