@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "ms-inventory", url = "http://localhost:8093/api/v1/inventory")
 public interface InventoryClient {
 
-    @GetMapping("/check/{userId}/{itemId}")
+    @GetMapping("/user/{userId}/item/{itemId}/check")
     boolean checkHasItem(@PathVariable("userId") Long userId, @PathVariable("itemId") Long itemId);
 }

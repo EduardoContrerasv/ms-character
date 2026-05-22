@@ -10,7 +10,7 @@ public class EquipItemDto {
     private Long userId;
 
     @NotNull
-    private Long baseCharacterId;
+    private Long userCharacterId;
 
     @NotNull
     private Long itemId;

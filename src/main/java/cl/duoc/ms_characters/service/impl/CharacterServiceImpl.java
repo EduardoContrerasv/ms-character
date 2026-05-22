@@ -25,14 +25,17 @@ public class CharacterServiceImpl implements CharacterService {
 
 
     @Override
-    public List<RosterResponseDto> getUserRoster(long userId) {
+    public List<UserRosterResponseDto> getUserRoster(long userId) {
         List<UserCharacter> roster = userCharacterRepository.findByUserId(userId);
 
         return roster.stream().map(uc -> {
-            RosterResponseDto dto = new RosterResponseDto();
+            UserRosterResponseDto dto = new UserRosterResponseDto();
             dto.setCharacterName(uc.getBaseCharacter().getName());
             dto.setCharacterClass(uc.getBaseCharacter().getCharacterArchetype().name());
             dto.setLevel(uc.getCurrentLevel());
+            dto.setHealth(uc.getBaseCharacter().getBaseHealth());
+            dto.setAttack(uc.getBaseCharacter().getBaseAttack());
+            dto.setDefense(uc.getBaseCharacter().getBaseDefense());
             return dto;
         }).toList();
     }
@@ -91,6 +94,7 @@ public class CharacterServiceImpl implements CharacterService {
             if (user == null) throw new RuntimeException("Usuario no encontrado.");
         } catch (Exception e) {
             throw new RuntimeException("Error validando usuario con ms-user.");
+
         }
         BaseCharacter blueprint = baseCharacterRepository.findById(dto.getBaseCharacterId())
                 .orElseThrow(() -> new RuntimeException("Ese héroe no existe en el juego."));
@@ -113,7 +117,7 @@ public class CharacterServiceImpl implements CharacterService {
     public String equipItem(EquipItemDto dto) {
 
         UserCharacter playerHero = userCharacterRepository
-                .findByUserIdAndBaseCharacterId(dto.getUserId(), dto.getBaseCharacterId())
+                .findByUserIdAndBaseCharacterId(dto.getUserId(), dto.getUserCharacterId())
                 .orElseThrow(() -> new RuntimeException("No posees a este héroe."));
 
         boolean ownsItem;
@@ -128,6 +132,7 @@ public class CharacterServiceImpl implements CharacterService {
         try {
             itemData = itemClient.getItemById(dto.getItemId());
         } catch (Exception e) {
+            System.err.println("🛑 ERROR FEIGN MS-ITEM: " + e.getMessage());
             throw new RuntimeException("El item no existe en la base de datos.");
         }
 
@@ -147,7 +152,25 @@ public class CharacterServiceImpl implements CharacterService {
         }
 
         userCharacterRepository.save(playerHero);
-        return "Item equipado exitosamente en la ranura: " + dto.getSlot();
+        return "Item equipado: " + dto.getSlot();
     }
 
+    @Override
+    public List<AdminRosterResponseDto> getAllCharacters() {
+
+        List<BaseCharacter> blueprints = baseCharacterRepository.findAll();
+
+        return blueprints.stream().map(hero -> {
+            AdminRosterResponseDto dto = new AdminRosterResponseDto();
+            dto.setId(hero.getId());
+            dto.setCharacterName(hero.getName());
+            dto.setCharacterArchetype(hero.getCharacterArchetype().name());
+
+            dto.setHealth(hero.getBaseHealth());
+            dto.setAttack(hero.getBaseAttack());
+            dto.setDefense(hero.getBaseDefense());
+
+            return dto;
+        }).toList();
+    }
 }

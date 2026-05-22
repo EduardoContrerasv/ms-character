@@ -8,6 +8,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "ms-user", url = "http://localhost:8090")
 public interface UserFeignClient {
 
-    @GetMapping("/api/v1/users/{id}")
+    @GetMapping("/api/v1/getUserId/{id}")
     UserFeignDto getUserById(@PathVariable("id") Long id);
 }
