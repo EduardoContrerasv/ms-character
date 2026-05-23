@@ -9,12 +9,10 @@ import cl.duoc.ms_characters.repository.BaseCharacterRepository;
 import cl.duoc.ms_characters.repository.UserCharacterRepository;
 import cl.duoc.ms_characters.service.CharacterService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-
-@Slf4j
+import cl.duoc.ms_characters.client.ItemClient;
 @Service
 @RequiredArgsConstructor
 public class CharacterServiceImpl implements CharacterService {
@@ -25,53 +23,71 @@ public class CharacterServiceImpl implements CharacterService {
     private final InventoryClient inventoryClient;
     private final ItemClient itemClient;
 
-    private CharacterDto toDto(Characters character) {
-        log.info("toDto()");
-        CharacterDto dto = new CharacterDto();
-        dto.setId(character.getCharacterId());
-        dto.setUserId(character.getUserId());
-        dto.setName(character.getName());
-        dto.setGender(character.getGender());
-        dto.setCharacterClass(character.getCharacterClass());
-        dto.setLevel(character.getLevel());
-        dto.setExperience(character.getExperience());
-        dto.setHealth(character.getHealth());
-        dto.setAttack(character.getAttack());
-        dto.setDefense(character.getDefense());
-        dto.setStatus(character.getStatus());
-        return dto;
+
+    @Override
+    public List<UserRosterResponseDto> getUserRoster(long userId) {
+        List<UserCharacter> roster = userCharacterRepository.findByUserId(userId);
+
+        return roster.stream().map(uc -> {
+            UserRosterResponseDto dto = new UserRosterResponseDto();
+            dto.setCharacterName(uc.getBaseCharacter().getName());
+            dto.setCharacterClass(uc.getBaseCharacter().getCharacterArchetype().name());
+            dto.setLevel(uc.getCurrentLevel());
+            dto.setHealth(uc.getBaseCharacter().getBaseHealth());
+            dto.setAttack(uc.getBaseCharacter().getBaseAttack());
+            dto.setDefense(uc.getBaseCharacter().getBaseDefense());
+            return dto;
+        }).toList();
     }
 
     @Override
-    public List<CharacterDto> findAllCharacters() {
-        log.info("findAllCharacters()");
-        return repository.findAll().stream().map(this::toDto).toList();
+    public String createBaseCharacter(BaseCharacterRequestDto dto) {
+
+        if (baseCharacterRepository.findByName(dto.getName()).isPresent()) {
+            throw new RuntimeException("El héroe " + dto.getName() + " ya existe.");
+        }
+
+        BaseCharacter hero = new BaseCharacter();
+        hero.setName(dto.getName());
+        hero.setCharacterArchetype(dto.getCharacterArchetype());
+        hero.setDefaultCosmeticItemId(dto.getDefaultCosmeticItemId());
+
+        int rawHealth = dto.getBaseHealth();
+        int rawAttack = dto.getBaseAttack();
+        int rawDefense = dto.getBaseDefense();
+
+        switch (dto.getCharacterArchetype()) {
+            case ATTACK:
+                hero.setBaseAttack((int) (rawAttack * 1.2));
+                hero.setBaseHealth((int) (rawHealth * 0.9));
+                hero.setBaseDefense((int) (rawDefense * 0.7));
+                break;
+
+            case VANGUARD:
+                hero.setBaseAttack((int) (rawAttack * 0.6));
+                hero.setBaseHealth((int) (rawHealth * 1.5));
+                hero.setBaseDefense((int) (rawDefense * 1.3));
+                break;
+
+            case STRATEGIST:
+                hero.setBaseAttack((int) (rawAttack * 1.05));
+                hero.setBaseHealth((int) (rawHealth * 1.05));
+                hero.setBaseDefense((int) (rawDefense * 0.9));
+                break;
+
+            case SUPPORT:
+                hero.setBaseAttack((int) (rawAttack * 0.7));
+                hero.setBaseHealth((int) (rawHealth * 1.1));
+                hero.setBaseDefense((int) (rawDefense * 1.1));
+                break;
+        }
+
+        baseCharacterRepository.save(hero);
+        return "Héroe " + hero.getName() + " creado";
     }
 
-
     @Override
-    public List<CharacterDto> findCharactersByName(String name) {
-        log.info("findCharactersByName()");
-        return repository.findByName(name).stream().map(this::toDto).toList();
-    }
-
-    @Override
-    public CharacterDto findCharactersById(long id) {
-        log.info("findCharactersById()");
-        return repository.findById(id)
-                .map(this::toDto)
-                .orElseThrow(() -> new RuntimeException("Character with ID " + id + " not found"));
-    }
-
-    @Override
-    public List<CharacterDto> findCharactersByUserId(long userId) {
-        log.info("findCharactersByUserId()");
-        return repository.findByUserId(userId).stream().map(this::toDto).toList();
-    }
-
-    @Override
-    public CharacterDto createCharacter(CharacterDto dto) {
-        log.info("createCharacter()");
+    public String unlockCharacterForUser(UnlockCharacterDto dto) {
 
         try {
             UserFeignDto user = userFeignClient.getUserById(dto.getUserId());
@@ -98,11 +114,41 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     @Override
-    public Boolean deleteCharacter(long id) {
-        log.info("deleteCharacter()");
-        if (repository.existsById(id)) {
-            repository.deleteById(id);
-            return true;
+    public String equipItem(EquipItemDto dto) {
+
+        UserCharacter playerHero = userCharacterRepository
+                .findByUserIdAndBaseCharacterId(dto.getUserId(), dto.getUserCharacterId())
+                .orElseThrow(() -> new RuntimeException("No posees a este héroe."));
+
+        boolean ownsItem;
+        try {
+            ownsItem = inventoryClient.checkHasItem(dto.getUserId(), dto.getItemId());
+        } catch (Exception e) {
+            throw new RuntimeException("Error consultando el inventario.");
+        }
+        if (!ownsItem) throw new RuntimeException("No tienes este item en tu inventario.");
+
+        ItemFeignDto itemData;
+        try {
+            itemData = itemClient.getItemById(dto.getItemId());
+        } catch (Exception e) {
+            System.err.println("🛑 ERROR FEIGN MS-ITEM: " + e.getMessage());
+            throw new RuntimeException("El item no existe en la base de datos.");
+        }
+
+        switch (dto.getSlot()) {
+            case WEAPON:
+                if (!"WEAPON".equals(itemData.getItemType())) throw new RuntimeException("Esto no es un arma.");
+                playerHero.setEquippedWeaponId(dto.getItemId());
+                break;
+            case ARMOR:
+                if (!"ARMOR".equals(itemData.getItemType())) throw new RuntimeException("Esto no es una armadura.");
+                playerHero.setEquippedArmorId(dto.getItemId());
+                break;
+            case COSMETIC:
+                if (!"COSMETIC".equals(itemData.getItemType())) throw new RuntimeException("Esto no es un cosmético.");
+                playerHero.setEquippedCosmeticId(dto.getItemId());
+                break;
         }
 
         userCharacterRepository.save(playerHero);
@@ -110,10 +156,15 @@ public class CharacterServiceImpl implements CharacterService {
     }
 
     @Override
-    public CharacterDto updateCharacter(long id, CharacterDto dto) {
-        log.info("updateCharacter()");
-        Characters existingCharacter = repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Cannot update: Character not found"));
+    public List<AdminRosterResponseDto> getAllCharacters() {
+
+        List<BaseCharacter> blueprints = baseCharacterRepository.findAll();
+
+        return blueprints.stream().map(hero -> {
+            AdminRosterResponseDto dto = new AdminRosterResponseDto();
+            dto.setId(hero.getId());
+            dto.setCharacterName(hero.getName());
+            dto.setCharacterArchetype(hero.getCharacterArchetype().name());
 
             dto.setHealth(hero.getBaseHealth());
             dto.setAttack(hero.getBaseAttack());
