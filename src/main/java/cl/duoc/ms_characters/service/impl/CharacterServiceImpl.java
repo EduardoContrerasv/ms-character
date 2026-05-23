@@ -1,11 +1,13 @@
 package cl.duoc.ms_characters.service.impl;
 
+import cl.duoc.ms_characters.client.InventoryClient;
 import cl.duoc.ms_characters.client.UserFeignClient;
-import cl.duoc.ms_characters.dto.UserDto;
-import cl.duoc.ms_characters.model.Characters;
-import cl.duoc.ms_characters.dto.CharacterDto;
+import cl.duoc.ms_characters.dto.*;
+import cl.duoc.ms_characters.model.BaseCharacter;
+import cl.duoc.ms_characters.model.UserCharacter;
+import cl.duoc.ms_characters.repository.BaseCharacterRepository;
+import cl.duoc.ms_characters.repository.UserCharacterRepository;
 import cl.duoc.ms_characters.service.CharacterService;
-import cl.duoc.ms_characters.repository.CharacterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,8 +19,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CharacterServiceImpl implements CharacterService {
 
-    private final CharacterRepository repository;
+    private final BaseCharacterRepository baseCharacterRepository;
+    private final UserCharacterRepository userCharacterRepository;
     private final UserFeignClient userFeignClient;
+    private final InventoryClient inventoryClient;
+    private final ItemClient itemClient;
 
     private CharacterDto toDto(Characters character) {
         log.info("toDto()");
@@ -69,55 +74,27 @@ public class CharacterServiceImpl implements CharacterService {
         log.info("createCharacter()");
 
         try {
-            UserDto user = userFeignClient.getUserById(dto.getUserId());
-
-            if (user == null || user.getId() == null) {
-                throw new RuntimeException("El usuario con la ID: " + dto.getUserId() + " no existe");
-            }
+            UserFeignDto user = userFeignClient.getUserById(dto.getUserId());
+            if (user == null) throw new RuntimeException("Usuario no encontrado.");
         } catch (Exception e) {
-            System.err.println("Error de conexión con ms-user: " + e.getMessage());
-            throw new RuntimeException("No se pudo validar el usuario. Asegúrate de que el usuario existe");
+            throw new RuntimeException("Error validando usuario con ms-user.");
+
+        }
+        BaseCharacter blueprint = baseCharacterRepository.findById(dto.getBaseCharacterId())
+                .orElseThrow(() -> new RuntimeException("Ese héroe no existe en el juego."));
+
+        boolean alreadyOwns = userCharacterRepository.existsByUserIdAndBaseCharacterId(dto.getUserId(), dto.getBaseCharacterId());
+        if (alreadyOwns) {
+            throw new RuntimeException("El usuario ya posee a este héroe.");
         }
 
-        if (dto.getName() == null || dto.getName().isBlank()) {
-            throw new RuntimeException("Debe ingresar un nombre");
-        }
+        UserCharacter playerCopy = new UserCharacter();
+        playerCopy.setUserId(dto.getUserId());
+        playerCopy.setBaseCharacter(blueprint);
+        playerCopy.setEquippedCosmeticId(blueprint.getDefaultCosmeticItemId());
 
-        if (!repository.findByName(dto.getName()).isEmpty()) {
-            throw new RuntimeException("Ya existe un personaje con el nombre: " + dto.getName());
-        }
-
-        Characters character = new Characters();
-        character.setUserId(dto.getUserId());
-        character.setName(dto.getName());
-        character.setGender(dto.getGender());
-        character.setCharacterClass(dto.getCharacterClass());
-        character.setLevel(1);
-        character.setExperience(0);
-        character.setStatus("ACTIVE");
-
-        if (dto.getCharacterClass() != null) {
-            switch (dto.getCharacterClass()) {
-                case WARRIOR:
-                    character.setHealth(150); character.setAttack(20); character.setDefense(15);
-                    break;
-                case MAGE:
-                    character.setHealth(80); character.setAttack(30); character.setDefense(5);
-                    break;
-                case ARCHER:
-                    character.setHealth(100); character.setAttack(25); character.setDefense(10);
-                    break;
-                case ASSASSIN:
-                    character.setHealth(90); character.setAttack(35); character.setDefense(5);
-                    break;
-                case SUPPORT:
-                    character.setHealth(120); character.setAttack(10); character.setDefense(20);
-                    break;
-            }
-        }
-
-        Characters savedCharacter = repository.save(character);
-        return this.toDto(savedCharacter);
+        userCharacterRepository.save(playerCopy);
+        return "El jugador ha desbloqueado a " + blueprint.getName() + "!";
     }
 
     @Override
@@ -127,7 +104,9 @@ public class CharacterServiceImpl implements CharacterService {
             repository.deleteById(id);
             return true;
         }
-        throw new RuntimeException("Cannot delete: Character with ID " + id + " not found");
+
+        userCharacterRepository.save(playerHero);
+        return "Item equipado: " + dto.getSlot();
     }
 
     @Override
@@ -136,10 +115,11 @@ public class CharacterServiceImpl implements CharacterService {
         Characters existingCharacter = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Cannot update: Character not found"));
 
-        existingCharacter.setName(dto.getName());
-        existingCharacter.setGender(dto.getGender());
+            dto.setHealth(hero.getBaseHealth());
+            dto.setAttack(hero.getBaseAttack());
+            dto.setDefense(hero.getBaseDefense());
 
-        Characters updatedCharacter = repository.save(existingCharacter);
-        return toDto(updatedCharacter);
+            return dto;
+        }).toList();
     }
 }
