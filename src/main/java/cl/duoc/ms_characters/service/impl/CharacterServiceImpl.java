@@ -7,10 +7,12 @@ import cl.duoc.ms_characters.dto.CharacterDto;
 import cl.duoc.ms_characters.service.CharacterService;
 import cl.duoc.ms_characters.repository.CharacterRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CharacterServiceImpl implements CharacterService {
@@ -19,6 +21,7 @@ public class CharacterServiceImpl implements CharacterService {
     private final UserFeignClient userFeignClient;
 
     private CharacterDto toDto(Characters character) {
+        log.info("toDto()");
         CharacterDto dto = new CharacterDto();
         dto.setId(character.getCharacterId());
         dto.setUserId(character.getUserId());
@@ -36,16 +39,20 @@ public class CharacterServiceImpl implements CharacterService {
 
     @Override
     public List<CharacterDto> findAllCharacters() {
+        log.info("findAllCharacters()");
         return repository.findAll().stream().map(this::toDto).toList();
     }
 
+
     @Override
     public List<CharacterDto> findCharactersByName(String name) {
+        log.info("findCharactersByName()");
         return repository.findByName(name).stream().map(this::toDto).toList();
     }
 
     @Override
     public CharacterDto findCharactersById(long id) {
+        log.info("findCharactersById()");
         return repository.findById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new RuntimeException("Character with ID " + id + " not found"));
@@ -53,11 +60,13 @@ public class CharacterServiceImpl implements CharacterService {
 
     @Override
     public List<CharacterDto> findCharactersByUserId(long userId) {
+        log.info("findCharactersByUserId()");
         return repository.findByUserId(userId).stream().map(this::toDto).toList();
     }
 
     @Override
     public CharacterDto createCharacter(CharacterDto dto) {
+        log.info("createCharacter()");
 
         try {
             UserDto user = userFeignClient.getUserById(dto.getUserId());
@@ -113,6 +122,7 @@ public class CharacterServiceImpl implements CharacterService {
 
     @Override
     public Boolean deleteCharacter(long id) {
+        log.info("deleteCharacter()");
         if (repository.existsById(id)) {
             repository.deleteById(id);
             return true;
@@ -122,6 +132,7 @@ public class CharacterServiceImpl implements CharacterService {
 
     @Override
     public CharacterDto updateCharacter(long id, CharacterDto dto) {
+        log.info("updateCharacter()");
         Characters existingCharacter = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Cannot update: Character not found"));
 
