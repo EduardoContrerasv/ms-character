@@ -8,9 +8,12 @@ import cl.duoc.ms_characters.model.UserCharacter;
 import cl.duoc.ms_characters.repository.BaseCharacterRepository;
 import cl.duoc.ms_characters.repository.UserCharacterRepository;
 import cl.duoc.ms_characters.service.CharacterService;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import cl.duoc.ms_characters.client.ItemClient;
@@ -47,7 +50,7 @@ public class CharacterServiceImpl implements CharacterService {
     public String createBaseCharacter(BaseCharacterRequestDto dto) {
         log.info("createBaseCharacter");
         if (baseCharacterRepository.findByName(dto.getName()).isPresent()) {
-            throw new RuntimeException("El héroe " + dto.getName() + " ya existe.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El héroe " + dto.getName() + " ya existe.");
         }
 
         BaseCharacter hero = new BaseCharacter();
@@ -93,18 +96,19 @@ public class CharacterServiceImpl implements CharacterService {
     public String unlockCharacterForUser(UnlockCharacterDto dto) {
         log.info("unlockCharacterForUser");
         try {
-            UserFeignDto user = userFeignClient.getUserById(dto.getUserId());
-            if (user == null) throw new RuntimeException("Usuario no encontrado.");
-        } catch (Exception e) {
-            throw new RuntimeException("Error validando usuario con ms-user.");
-
+            userFeignClient.getUserById(dto.getUserId());
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado con ID " + dto.getUserId());
+        } catch (FeignException e) {
+            log.error("Error de comunicacion con ms-user: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo validar el usuario con ms-user.");
         }
         BaseCharacter blueprint = baseCharacterRepository.findById(dto.getBaseCharacterId())
-                .orElseThrow(() -> new RuntimeException("Ese héroe no existe en el juego."));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ese héroe no existe en el juego."));
 
         boolean alreadyOwns = userCharacterRepository.existsByUserIdAndBaseCharacterId(dto.getUserId(), dto.getBaseCharacterId());
         if (alreadyOwns) {
-            throw new RuntimeException("El usuario ya posee a este héroe.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El usuario ya posee a este héroe.");
         }
 
         UserCharacter playerCopy = new UserCharacter();
@@ -122,35 +126,38 @@ public class CharacterServiceImpl implements CharacterService {
 
         UserCharacter playerHero = userCharacterRepository
                 .findByUserIdAndBaseCharacterId(dto.getUserId(), dto.getUserCharacterId())
-                .orElseThrow(() -> new RuntimeException("No posees a este héroe."));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No posees a este héroe."));
 
         boolean ownsItem;
         try {
             ownsItem = inventoryClient.checkHasItem(dto.getUserId(), dto.getItemId());
-        } catch (Exception e) {
-            throw new RuntimeException("Error consultando el inventario.");
+        } catch (FeignException e) {
+            log.error("Error de comunicacion con ms-inventory: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Error consultando el inventario.");
         }
-        if (!ownsItem) throw new RuntimeException("No tienes este item en tu inventario.");
+        if (!ownsItem) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No tienes este item en tu inventario.");
 
         ItemFeignDto itemData;
         try {
             itemData = itemClient.getItemById(dto.getItemId());
-        } catch (Exception e) {
-            System.err.println("🛑 ERROR FEIGN MS-ITEM: " + e.getMessage());
-            throw new RuntimeException("El item no existe en la base de datos.");
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "El item no existe en la base de datos.");
+        } catch (FeignException e) {
+            log.error("Error de comunicacion con ms-item: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo verificar el item con ms-item.");
         }
 
         switch (dto.getSlot()) {
             case WEAPON:
-                if (!"WEAPON".equals(itemData.getItemType())) throw new RuntimeException("Esto no es un arma.");
+                if (!"WEAPON".equals(itemData.getItemType())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esto no es un arma.");
                 playerHero.setEquippedWeaponId(dto.getItemId());
                 break;
             case ARMOR:
-                if (!"ARMOR".equals(itemData.getItemType())) throw new RuntimeException("Esto no es una armadura.");
+                if (!"ARMOR".equals(itemData.getItemType())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esto no es una armadura.");
                 playerHero.setEquippedArmorId(dto.getItemId());
                 break;
             case COSMETIC:
-                if (!"COSMETIC".equals(itemData.getItemType())) throw new RuntimeException("Esto no es un cosmético.");
+                if (!"COSMETIC".equals(itemData.getItemType())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Esto no es un cosmético.");
                 playerHero.setEquippedCosmeticId(dto.getItemId());
                 break;
         }
